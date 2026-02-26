@@ -1,0 +1,33 @@
+%AlignOverviews
+
+Files = dir([GuiGlobalsStruct.SectionOverviewsDirectory '*.tif']);
+labels=zeros(1,length(Files));
+for i = 1:length(Files)
+            %Extract Label
+            Label = DirList(i).name(length('SectionOverview_')+1:end-4);
+            labels(i) = str2num(Label);
+end
+[sorted,indices]=sort(labels);
+Files=Files(indices);
+
+[xpos,ypos,angles,avg_inliers]=GlobalRigidAlignFiles(Files);
+
+for i = 1:length(Files)
+      
+    %GuiGlobalsStruct.SectionOverviewsAlignedWithTemplateDirectory = 'C:\MasterUTSLDirectory\CortexUTSL004\Wafer005\SectionOverviewsAlignedWithTemplateDirectory';
+    OverviewImageAlignedFileNameStr = sprintf('%s\\SectionOverviewAligned_%s.tif',GuiGlobalsStruct.SectionOverviewsAlignedWithTemplateDirectory,Label);
+    OverviewAlignedDataFileNameStr = sprintf('%s\\SectionOverviewAligned_%s.mat',GuiGlobalsStruct.SectionOverviewsAlignedWithTemplateDirectory,Label);
+    radangle=angles(i)*pi/180;
+    OverviewImage=imread(Files{i});
+    themode=mode(OverviewImage(:));
+    tform=maketform([cos(radangle) sin(radangle) 0;-sin(radangle) cos(radangle) 0;xpos(i) ypos(i) 1],'affine'); 
+    OverviewImage_rotated_shifted=imtransform(OverviewImage,tform,'bicubic','Xdata',[1 size(I2,2)],'Ydata',[1 size(I2,1)],'FillVa',themode);
+    imwrite(OverviewImage_rotated_shifted,OverviewImageAlignedFileNameStr,'tif');
+    AlignmentParameters.r_offset = -ypos(i);
+    AlignmentParameters.c_offset = xpos(i);
+    AlignmentParameters.AngleOffsetInDegrees = angles(i);
+    save(OverviewAlignedDataFileNameStr, 'AlignmentParameters');
+    
+end
+
+

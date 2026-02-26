@@ -1,0 +1,118 @@
+function[] = autoBrightConMosaic()
+
+global GuiGlobalsStruct
+MyCZEMAPIClass = GuiGlobalsStruct.MyCZEMAPIClass;
+tic
+%% Set up Variables
+%DwellTimeInMicroseconds = GuiGlobalsStruct.MontageParameters.TileDwellTime_microseconds;
+DwellTimeInMicroseconds = GuiGlobalsStruct.MontageParameters.TileDwellTime_microseconds ;
+FOV_microns = GuiGlobalsStruct.MontageParameters.TileFOV_microns/10;
+TileWidth =  GuiGlobalsStruct.MontageParameters.TileWidth_pixels/10;
+scanHeight = TileWidth;
+FileName = 'C:\temp\tempBC.tif';
+MyCZEMAPIClass.Fibics_WriteFOV(FOV_microns); %Always set the FOV even if you are overriding with mag (might be used in some way inside Fibics)
+pause(0.1); %1
+
+%% Get first brigh/con
+firstBrightness =  MyCZEMAPIClass.Get_ReturnTypeSingle('AP_BRIGHTNESS');
+firstContrast =  MyCZEMAPIClass.Get_ReturnTypeSingle('AP_CONTRAST');
+newBright = firstBrightness;
+newCon = firstContrast;
+imagePix = 1024;
+lowThresh = 3; %percent allowed to saturate
+highThresh = 3; %percent allowed to saturate
+changeBright = 2;
+changeCon = 2;
+lastChangeCon = 0;
+lastChangeBright = 0;
+targLow = 32;
+targHigh = 222;
+
+
+pixelNum = TileWidth * scanHeight;
+%% Start checking contrast
+for r = 1:1000
+    
+    
+    %%Get Pic
+    GuiGlobalsStruct.MyCZEMAPIClass.Fibics_AcquireImage(TileWidth,scanHeight,DwellTimeInMicroseconds,FileName);
+    while(MyCZEMAPIClass.Fibics_IsBusy)
+        pause(.1); %1
+    end
+    
+    try
+        I = double(imread(FileName));
+    catch err
+    end
+    
+    
+    
+    %%Analyze Pic
+    histI = hist(I(:),targLow:1:targHigh);
+    
+    %bar(histI),pause(.01)
+    
+    numLow = histI(1);
+    numHigh = histI(end);
+    numGoodLow = sum(histI(1:10));
+    numGoodHigh = sum(histI(end-9:end));
+    medI = median(I(:));
+    stdI = std(I(:));
+    
+    tooLow = (numLow/pixelNum) > (lowThresh/100);
+    tooHigh = (numHigh/pixelNum) > (highThresh/100);
+    
+    
+    
+    
+    if tooLow & tooHigh %reduceContrast
+        
+        if lastChangeCon == 1
+            changeCon = changeCon/2
+        end
+        disp('dropContrast')
+        newCon = newCon-changeCon;
+        newBright = newBright + changeCon;
+        lastChangeCon = -1;
+        %lastChangeBright = 0;
+    elseif tooLow
+        if lastChangeBright == -1
+            changeBright = changeBright;
+        end
+        disp('brighten')
+        newBright = newBright + changeBright;
+        lastChangeBright = 1;
+        %lastChangeCon = 0;
+    elseif tooHigh
+        if lastChangeBright == 1
+            changeBright = changeBright/2;
+        end
+        disp('darken')
+        newBright = newBright - changeBright;
+        lastChangeBright = -1;
+        %lastChangeCon = 0;
+    else
+        if lastChangeCon == -1
+            changeCon = changeCon/2;
+        end
+        passLow = (numGoodLow/pixelNum) > (lowThresh/100)
+        passHigh = (numGoodHigh/pixelNum)> (highThresh/100)
+        if passLow & passHigh
+            'passed'
+            break
+        end
+        
+        disp('Increase Contrast')
+        newCon = newCon+changeCon;
+        newBright = newBright - changeCon/2;
+        lastChangeCon = 1;
+        %lastChangeBright = 0;
+    end
+    changeCon
+    newCon
+    
+    MyCZEMAPIClass.Set_PassedTypeSingle('AP_BRIGHTNESS',newBright);
+    MyCZEMAPIClass.Set_PassedTypeSingle('AP_CONTRAST',newCon);
+end %image again
+
+toc
